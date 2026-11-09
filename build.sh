@@ -175,30 +175,56 @@ if [[ "$BUILD_TARGET" == "both" || "$BUILD_TARGET" == "aosp" ]]; then
 echo "Building for AOSP......"
 make $MAKE_ARGS ${TARGET_DEVICE}_defconfig
 
-if [ $KSU_ENABLE -eq 1 ]; then
+# ============= SukiSU + KPM 配置 =============
+if [ "$KSU_ENABLE" -eq 1 ]; then
+    echo "[SukiSU] Enabling KernelSU + KPM"
+    echo "[SukiSU] Disabling SUSFS"
+
     scripts/config --file out/.config \
-    -e KSU \
-    -e KSU_MANUAL_HOOK \
-    -e KSU_SUSFS_HAS_MAGIC_MOUNT \
-    -d KSU_SUSFS_SUS_PATH \
-    -e KSU_SUSFS_SUS_MOUNT \
-    -e KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT \
-    -e KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT \
-    -e KSU_SUSFS_SUS_KSTAT \
-    -d KSU_SUSFS_SUS_OVERLAYFS \
-    -e KSU_SUSFS_TRY_UMOUNT \
-    -e KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT \
-    -e KSU_SUSFS_SPOOF_UNAME \
-    -e KSU_SUSFS_ENABLE_LOG \
-    -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
-    -e KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-    -d KSU_SUSFS_OPEN_REDIRECT \
-    -d KSU_SUSFS_SUS_SU \
-    -e KPM
+        -e KSU \
+        -e KPM \
+        -d KSU_SUSFS
 else
-    scripts/config --file out/.config -d KSU
+    scripts/config --file out/.config \
+        -d KSU \
+        -d KPM \
+        -d KSU_SUSFS
 fi
 
+# 重新解析 Kconfig，确保 SUSFS 子选项也被关闭
+make $MAKE_ARGS olddefconfig
+
+# 检查最终配置
+if [ "$KSU_ENABLE" -eq 1 ]; then
+    grep -q '^CONFIG_KSU=y$' out/.config || {
+        echo "[ERROR] CONFIG_KSU is not enabled"
+        exit 1
+    }
+
+    grep -q '^CONFIG_KPM=y$' out/.config || {
+        echo "[ERROR] CONFIG_KPM is not enabled"
+        exit 1
+    }
+
+    grep -q '^# CONFIG_KSU_SUSFS is not set$' out/.config || {
+        echo "[ERROR] SUSFS is still enabled!"
+        exit 1
+    }
+
+    grep -q '^CONFIG_KALLSYMS=y$' out/.config || {
+        echo "[ERROR] CONFIG_KALLSYMS is missing"
+        exit 1
+    }
+
+    grep -q '^CONFIG_KALLSYMS_ALL=y$' out/.config || {
+        echo "[ERROR] CONFIG_KALLSYMS_ALL is missing"
+        exit 1
+    }
+
+    echo "[SukiSU] Configuration verified successfully"
+fi
+
+# ============= 开始编译 =============
 make $MAKE_ARGS -j$(nproc)
 
 
@@ -331,39 +357,6 @@ else
         -d KSU_SUSFS
 fi
 
-# 重新解析 Kconfig，确保 SUSFS 子选项也被关闭
-make $MAKE_ARGS olddefconfig
-
-# 检查最终配置
-if [ "$KSU_ENABLE" -eq 1 ]; then
-    grep -q '^CONFIG_KSU=y$' out/.config || {
-        echo "[ERROR] CONFIG_KSU is not enabled"
-        exit 1
-    }
-
-    grep -q '^CONFIG_KPM=y$' out/.config || {
-        echo "[ERROR] CONFIG_KPM is not enabled"
-        exit 1
-    }
-
-    grep -q '^# CONFIG_KSU_SUSFS is not set$' out/.config || {
-        echo "[ERROR] SUSFS is still enabled!"
-        exit 1
-    }
-
-    grep -q '^CONFIG_KALLSYMS=y$' out/.config || {
-        echo "[ERROR] CONFIG_KALLSYMS is missing"
-        exit 1
-    }
-
-    grep -q '^CONFIG_KALLSYMS_ALL=y$' out/.config || {
-        echo "[ERROR] CONFIG_KALLSYMS_ALL is missing"
-        exit 1
-    }
-
-    echo "[SukiSU] Configuration verified successfully"
-fi
-
 
 scripts/config --file out/.config \
     --set-str STATIC_USERMODEHELPER_PATH /system/bin/micd \
@@ -393,6 +386,22 @@ scripts/config --file out/.config \
     -e BOOTUP_RECLAIM \
     -e MI_RECLAIM \
     -e RTMM \
+
+# 解析全部配置
+make $MAKE_ARGS olddefconfig
+
+# 验证 SukiSU 配置
+if [ "$KSU_ENABLE" -eq 1 ]; then
+    grep -q '^CONFIG_KSU=y$' out/.config || exit 1
+    grep -q '^CONFIG_KPM=y$' out/.config || exit 1
+    grep -q '^# CONFIG_KSU_SUSFS is not set$' out/.config || exit 1
+    grep -q '^CONFIG_KALLSYMS=y$' out/.config || exit 1
+    grep -q '^CONFIG_KALLSYMS_ALL=y$' out/.config || exit 1
+
+    echo "[SukiSU] KSU + KPM configuration verified"
+fi
+
+make $MAKE_ARGS -j$(nproc)
 
 make $MAKE_ARGS -j$(nproc)
 
