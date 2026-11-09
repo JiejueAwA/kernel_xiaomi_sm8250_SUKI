@@ -3,6 +3,52 @@ name: Xiaomi SM8250 Kernel Build
 
 on:
   workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "构建模式"
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - single
+
+      device:
+        description: "指定机型（single 模式生效）"
+        type: choice
+        required: true
+        default: psyche
+        options:
+          - psyche
+          - thyme
+          - umi
+          - munch
+          - lmi
+          - cmi
+          - cas
+          - apollo
+          - alioth
+          - elish
+          - enuma
+          - dagu
+          - pipa
+
+      target:
+        description: "构建目标"
+        type: choice
+        required: true
+        default: both
+        options:
+          - both
+          - aosp
+          - miui
+
+      enable_ksu:
+        description: "启用 SukiSU"
+        type: boolean
+        required: true
+        default: true
+
   push:
     branches:
       - android15-lineage22-mod
@@ -20,7 +66,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.device }} (AOSP + MIUI)
+    name: ${{ matrix.device }} - ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'both' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 360
 
@@ -28,23 +74,10 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        device:
-          - psyche
-          - thyme
-          - umi
-          - munch
-          - lmi
-          - cmi
-          - cas
-          - apollo
-          - alioth
-          - elish
-          - enuma
-          - dagu
-          - pipa
+        device: ${{ github.event_name == 'workflow_dispatch' && inputs.build_mode == 'single' && fromJSON(format('["{0}"]', inputs.device)) || fromJSON('["psyche","thyme","umi","munch","lmi","cmi","cas","apollo","alioth","elish","enuma","dagu","pipa"]') }}
 
     steps:
-      - name: Checkout kernel source
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -53,16 +86,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            git curl wget \
-            bison flex \
-            zip unzip \
-            bc cpio rsync \
-            libssl-dev \
-            libelf-dev \
-            libncurses-dev \
-            device-tree-compiler \
-            python-is-python3 \
+            build-essential git curl wget \
+            bison flex zip unzip bc cpio rsync \
+            libssl-dev libelf-dev libncurses-dev \
+            device-tree-compiler python-is-python3 \
             gcc-aarch64-linux-gnu \
             binutils-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi \
@@ -85,25 +112,37 @@ jobs:
       - name: Verify toolchain
         run: |
           export PATH="$HOME/proton-clang/proton-clang-20210522/bin:$PATH"
-
           clang --version
           aarch64-linux-gnu-ld --version
           arm-linux-gnueabi-ld --version
 
-      - name: Build AOSP and MIUI with SukiSU
+      - name: Build kernel
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
 
-          echo "=================================="
-          echo "Device: ${{ matrix.device }}"
-          echo "SukiSU: builtin"
-          echo "Targets: AOSP + MIUI"
-          echo "=================================="
+          DEVICE="${{ matrix.device }}"
 
-          bash build.sh "${{ matrix.device }}" ksu 2>&1 | tee build.log
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TARGET="${{ inputs.target }}"
+            KSU="${{ inputs.enable_ksu }}"
+          else
+            TARGET="both"
+            KSU="true"
+          fi
 
-      - name: Upload kernel ZIPs
+          echo "Device: $DEVICE"
+          echo "Target: $TARGET"
+          echo "SukiSU: $KSU"
+
+          KSU_ARG=""
+          if [[ "$KSU" == "true" ]]; then
+            KSU_ARG="ksu"
+          fi
+
+          bash build.sh "$DEVICE" $KSU_ARG "$TARGET" 2>&1 | tee build.log
+
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -113,5 +152,5 @@ jobs:
             Kernel_MIUI_${{ matrix.device }}_*.zip
             build.log
           if-no-files-found: warn
-          compression-level: 6
           retention-days: 14
+          compression-level: 6
