@@ -8,7 +8,18 @@ set -e
 TOOLCHAIN_PATH=$HOME/proton-clang/proton-clang-20210522/bin
 GIT_COMMIT_ID=$(git rev-parse --short=8 HEAD)
 TARGET_DEVICE=$1
+# 构建目标：both / aosp / miui
+BUILD_TARGET="${3:-both}"
 
+case "$BUILD_TARGET" in
+    both|aosp|miui)
+        ;;
+    *)
+        echo "Invalid build target: $BUILD_TARGET"
+        echo "Available: both / aosp / miui"
+        exit 1
+        ;;
+esac
 if [ -z "$1" ]; then
     echo "Error: No argument provided, please specific a target device." 
     echo "If you need KernelSU, please add [ksu] as the second arg."
@@ -116,7 +127,7 @@ local_version_date_str="-$(date +%Y%m%d)-${GIT_COMMIT_ID}-perf"
 sed -i "s/${local_version_str}/${local_version_date_str}/g" arch/arm64/configs/${TARGET_DEVICE}_defconfig
 
 # ------------- Building for AOSP -------------
-
+if [[ "$BUILD_TARGET" == "both" || "$BUILD_TARGET" == "aosp" ]]; then
 echo "Building for AOSP......"
 make $MAKE_ARGS ${TARGET_DEVICE}_defconfig
 
@@ -187,12 +198,13 @@ cd ..
 
 
 echo "Build for AOSP finished."
-
+fi
 # ------------- End of Building for AOSP -------------
 #  If you don't need AOSP you can comment out the above block [Building for AOSP]
 
 
 # ------------- Building for MIUI -------------
+if [[ "$BUILD_TARGET" == "both" || "$BUILD_TARGET" == "miui" ]]; then
 
 
 echo "Clearning [out/] and build for MIUI....."
@@ -353,7 +365,7 @@ echo "Build for MIUI finished."
 
 # Restore local version string
 sed -i "s/${local_version_date_str}/${local_version_str}/g" arch/arm64/configs/${TARGET_DEVICE}_defconfig
-
+fi
 # ------------- End of Building for MIUI -------------
 #  If you don't need MIUI you can comment out the above block [Building for MIUI]
 
