@@ -49,6 +49,12 @@ on:
         required: true
         default: true
 
+      kernel_name:
+        description: '自定义内核名称'
+        required: false
+        default: 'SukiSU'
+        type: string
+
   push:
     branches:
       - android15-lineage22-mod
@@ -116,32 +122,20 @@ jobs:
           aarch64-linux-gnu-ld --version
           arm-linux-gnueabi-ld --version
 
-      - name: Build kernel
+      - name: Build Kernel
         shell: bash
         run: |
-          set -euo pipefail
-
           DEVICE="${{ matrix.device }}"
+          TARGET="${{ inputs.target || 'both' }}"
+          KERNEL_NAME="${{ inputs.kernel_name || 'SukiSU' }}"
 
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TARGET="${{ inputs.target }}"
-            KSU="${{ inputs.enable_ksu }}"
-          else
-            TARGET="both"
-            KSU="true"
-          fi
-
-          echo "Device: $DEVICE"
-          echo "Target: $TARGET"
-          echo "SukiSU: $KSU"
-
-          KSU_ARG=""
-          if [[ "$KSU" == "true" ]]; then
+          if [[ "${{ inputs.enable_ksu }}" == "true" ]]; then
             KSU_ARG="ksu"
+          else
+            KSU_ARG="none"
           fi
 
-          bash build.sh "$DEVICE" $KSU_ARG "$TARGET" 2>&1 | tee build.log
-
+          bash build.sh "$DEVICE" "$KSU_ARG" "$TARGET" "$KERNEL_NAME"
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
