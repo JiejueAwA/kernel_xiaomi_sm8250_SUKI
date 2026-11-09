@@ -1,0 +1,125 @@
+
+name: Xiaomi SM8250 Kernel Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Select target device"
+        required: true
+        type: choice
+        default: psyche
+        options:
+          - psyche
+          - umi
+          - thyme
+          - munch
+          - lmi
+          - cmi
+          - cas
+          - apollo
+          - alioth
+          - elish
+          - enuma
+          - dagu
+          - pipa
+
+      ksu:
+        description: "Enable SukiSU"
+        required: true
+        type: boolean
+        default: true
+
+  push:
+    branches:
+      - android15-lineage22-mod
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ inputs.device || 'psyche' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    env:
+      DEVICE: ${{ inputs.device || 'psyche' }}
+      ENABLE_KSU: ${{ inputs.ksu == true && 'true' || 'false' }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            build-essential \
+            git curl wget \
+            bison flex \
+            zip unzip \
+            bc cpio \
+            libssl-dev \
+            libelf-dev \
+            libncurses-dev \
+            python-is-python3 \
+            ccache \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi
+
+      - name: Download Proton Clang
+        run: |
+          mkdir -p "$HOME/proton-clang"
+
+          wget -q \
+            https://github.com/kdrag0n/proton-clang/archive/refs/tags/20210522.zip \
+            -O /tmp/proton-clang.zip
+
+          unzip -q /tmp/proton-clang.zip \
+            -d "$HOME/proton-clang"
+
+          test -x "$HOME/proton-clang/proton-clang-20210522/bin/clang"
+
+          clang_path="$HOME/proton-clang/proton-clang-20210522/bin"
+
+          echo "$clang_path" >> "$GITHUB_PATH"
+
+      - name: Check environment
+        run: |
+          clang --version
+          aarch64-linux-gnu-ld --version
+          arm-linux-gnueabi-ld --version
+
+          echo "Device: $DEVICE"
+          echo "SukiSU: $ENABLE_KSU"
+
+      - name: Build kernel
+        run: |
+          if [ "$ENABLE_KSU" = "true" ]; then
+            bash build.sh "$DEVICE" ksu
+          else
+            bash build.sh "$DEVICE"
+          fi
+
+      - name: Upload kernel packages
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-${{ env.DEVICE }}-${{ github.run_number }}
+          path: |
+            Kernel_AOSP_*.zip
+            Kernel_MIUI_*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
