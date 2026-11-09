@@ -10,7 +10,16 @@ GIT_COMMIT_ID=$(git rev-parse --short=8 HEAD)
 TARGET_DEVICE=$1
 # 构建目标：both / aosp / miui
 BUILD_TARGET="${3:-both}"
+KERNEL_NAME="${4:-SukiSU}"
 
+# 限制名称字符，避免影响文件名和内核版本
+if [[ ! "$KERNEL_NAME" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    echo "Invalid kernel name: $KERNEL_NAME"
+    echo "Allowed characters: a-z A-Z 0-9 . _ -"
+    exit 1
+fi
+
+echo "KERNEL_NAME: $KERNEL_NAME"
 case "$BUILD_TARGET" in
     both|aosp|miui)
         ;;
@@ -122,7 +131,7 @@ git clone https://github.com/liyafe1997/AnyKernel3 -b kona --single-branch --dep
 
 # Add date to local version
 local_version_str="-perf"
-local_version_date_str="-$(date +%Y%m%d)-${GIT_COMMIT_ID}-perf"
+local_version_date_str="-${KERNEL_NAME}-$(date +%Y%m%d)-${GIT_COMMIT_ID}-perf"
 
 sed -i "s/${local_version_str}/${local_version_date_str}/g" arch/arm64/configs/${TARGET_DEVICE}_defconfig
 
@@ -188,7 +197,7 @@ cp out/arch/arm64/boot/dtb anykernel/kernels/
 
 cd anykernel 
 
-ZIP_FILENAME=Kernel_AOSP_${TARGET_DEVICE}_${KSU_ZIP_STR}_$(date +'%Y%m%d_%H%M%S')_anykernel3_${GIT_COMMIT_ID}.zip
+ZIP_FILENAME=Kernel_AOSP_${TARGET_DEVICE}_${KERNEL_NAME}_${KSU_ZIP_STR}_$(date +'%Y%m%d_%H%M%S')_anykernel3_${GIT_COMMIT_ID}.zip
 
 zip -r9 $ZIP_FILENAME ./* -x .git .gitignore out/ ./*.zip
 
@@ -372,7 +381,7 @@ fi
 
 cd anykernel 
 
-ZIP_FILENAME=Kernel_MIUI_${TARGET_DEVICE}_${KSU_ZIP_STR}_$(date +'%Y%m%d_%H%M%S')_anykernel3_${GIT_COMMIT_ID}.zip
+ZIP_FILENAME=Kernel_MIUI_${TARGET_DEVICE}_${KERNEL_NAME}_${KSU_ZIP_STR}_$(date +'%Y%m%d_%H%M%S')_anykernel3_${GIT_COMMIT_ID}.zip
 
 zip -r9 $ZIP_FILENAME ./* -x .git .gitignore out/ ./*.zip
 
