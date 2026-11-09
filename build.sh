@@ -403,9 +403,6 @@ fi
 
 make $MAKE_ARGS -j$(nproc)
 
-make $MAKE_ARGS -j$(nproc)
-
-
 
 if [ -f "out/arch/arm64/boot/Image" ]; then
     echo "The file [out/arch/arm64/boot/Image] exists. MIUI Build successfully."
