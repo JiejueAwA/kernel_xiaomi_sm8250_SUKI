@@ -3,16 +3,35 @@ name: Xiaomi SM8250 Kernel Build
 
 on:
   workflow_dispatch:
-    inputs:
-      device:
-        description: "Select target device"
-        required: true
-        type: choice
-        default: psyche
-        options:
+  push:
+    branches:
+      - android15-lineage22-mod
+    paths:
+      - 'build.sh'
+      - 'arch/arm64/configs/**'
+      - 'drivers/**'
+      - 'kernel/**'
+      - 'include/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.device }} (AOSP + MIUI)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        device:
           - psyche
-          - umi
           - thyme
+          - umi
           - munch
           - lmi
           - cmi
@@ -24,102 +43,75 @@ on:
           - dagu
           - pipa
 
-      ksu:
-        description: "Enable SukiSU"
-        required: true
-        type: boolean
-        default: true
-
-  push:
-    branches:
-      - android15-lineage22-mod
-
-permissions:
-  contents: read
-
-concurrency:
-  group: kernel-build-${{ github.ref }}
-  cancel-in-progress: false
-
-jobs:
-  build:
-    name: Build ${{ inputs.device || 'psyche' }}
-    runs-on: ubuntu-22.04
-    timeout-minutes: 360
-
-    env:
-      DEVICE: ${{ inputs.device || 'psyche' }}
-      ENABLE_KSU: ${{ inputs.ksu == true && 'true' || 'false' }}
-
     steps:
-      - name: Checkout source
+      - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
             build-essential \
             git curl wget \
             bison flex \
             zip unzip \
-            bc cpio \
+            bc cpio rsync \
             libssl-dev \
             libelf-dev \
             libncurses-dev \
+            device-tree-compiler \
             python-is-python3 \
-            ccache \
-            binutils-aarch64-linux-gnu \
-            binutils-arm-linux-gnueabi \
             gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi
+            binutils-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi \
+            binutils-arm-linux-gnueabi
 
       - name: Download Proton Clang
         run: |
           mkdir -p "$HOME/proton-clang"
+          cd "$HOME/proton-clang"
 
           wget -q \
             https://github.com/kdrag0n/proton-clang/archive/refs/tags/20210522.zip \
-            -O /tmp/proton-clang.zip
+            -O proton-clang.zip
 
-          unzip -q /tmp/proton-clang.zip \
-            -d "$HOME/proton-clang"
+          unzip -q proton-clang.zip
+          rm proton-clang.zip
 
-          test -x "$HOME/proton-clang/proton-clang-20210522/bin/clang"
+          test -x proton-clang-20210522/bin/clang
 
-          clang_path="$HOME/proton-clang/proton-clang-20210522/bin"
-
-          echo "$clang_path" >> "$GITHUB_PATH"
-
-      - name: Check environment
+      - name: Verify toolchain
         run: |
+          export PATH="$HOME/proton-clang/proton-clang-20210522/bin:$PATH"
+
           clang --version
           aarch64-linux-gnu-ld --version
           arm-linux-gnueabi-ld --version
 
-          echo "Device: $DEVICE"
-          echo "SukiSU: $ENABLE_KSU"
-
-      - name: Build kernel
+      - name: Build AOSP and MIUI with SukiSU
+        shell: bash
         run: |
-          if [ "$ENABLE_KSU" = "true" ]; then
-            bash build.sh "$DEVICE" ksu
-          else
-            bash build.sh "$DEVICE"
-          fi
+          set -o pipefail
 
-      - name: Upload kernel packages
-        if: success()
+          echo "=================================="
+          echo "Device: ${{ matrix.device }}"
+          echo "SukiSU: builtin"
+          echo "Targets: AOSP + MIUI"
+          echo "=================================="
+
+          bash build.sh "${{ matrix.device }}" ksu 2>&1 | tee build.log
+
+      - name: Upload kernel ZIPs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-${{ env.DEVICE }}-${{ github.run_number }}
+          name: Kernel-${{ matrix.device }}
           path: |
-            Kernel_AOSP_*.zip
-            Kernel_MIUI_*.zip
-          if-no-files-found: error
-          compression-level: 0
+            Kernel_AOSP_${{ matrix.device }}_*.zip
+            Kernel_MIUI_${{ matrix.device }}_*.zip
+            build.log
+          if-no-files-found: warn
+          compression-level: 6
           retention-days: 14
