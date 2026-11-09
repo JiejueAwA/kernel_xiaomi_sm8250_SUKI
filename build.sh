@@ -113,10 +113,45 @@ fi
 
 echo "TARGET_DEVICE: $TARGET_DEVICE"
 
-if [ $KSU_ENABLE -eq 1 ]; then
+if [ "$KSU_ENABLE" -eq 1 ]; then
     echo "KSU is enabled"
+
+    # 拉取并集成 SukiSU builtin
     curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
-    else
+
+    # 修复 Linux 4.19 不存在 linux/static_call.h 的问题
+    KSU_HEADER="drivers/kernelsu/kernel_includes.h"
+
+    if [[ ! -f "$KSU_HEADER" ]]; then
+        echo "[ERROR] Cannot find $KSU_HEADER"
+        exit 1
+    fi
+
+    python3 - "$KSU_HEADER" <<'PY'
+from pathlib import Path
+import sys
+
+header = Path(sys.argv[1])
+content = header.read_text()
+
+old = "#include <linux/static_call.h>"
+new = """#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+#include <linux/static_call.h>
+#endif"""
+
+if old not in content:
+    if new in content:
+        print("[INFO] static_call.h condition already exists")
+    else:
+        raise SystemExit("[ERROR] Cannot find static_call.h include")
+else:
+    content = content.replace(old, new, 1)
+    header.write_text(content)
+    print("[OK] static_call.h compatibility patch applied")
+
+PY
+
+else
     echo "KSU is disabled"
 fi
 
