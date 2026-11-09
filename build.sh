@@ -105,7 +105,7 @@ clang --version
 KSU_ZIP_STR=NoKernelSU
 if [ "$2" == "ksu" ]; then
     KSU_ENABLE=1
-    KSU_ZIP_STR=SukiSU-SUSFS
+    KSU_ZIP_STR=SukiSU
 else
     KSU_ENABLE=0
 fi
@@ -175,14 +175,14 @@ if [[ "$BUILD_TARGET" == "both" || "$BUILD_TARGET" == "aosp" ]]; then
 echo "Building for AOSP......"
 make $MAKE_ARGS ${TARGET_DEVICE}_defconfig
 
-# ============= SukiSU + KPM 配置 =============
+# ============= SukiSU 配置 =============
 if [ "$KSU_ENABLE" -eq 1 ]; then
-    echo "[SukiSU] Enabling KernelSU + KPM"
-    echo "[SukiSU] Disabling SUSFS"
+    echo "[SukiSU] Enabling SukiSU"
+    echo "[SukiSU] Disabling KPM and SUSFS"
 
     scripts/config --file out/.config \
         -e KSU \
-        -e KPM \
+        -d KPM \
         -d KSU_SUSFS
 else
     scripts/config --file out/.config \
@@ -191,7 +191,7 @@ else
         -d KSU_SUSFS
 fi
 
-# 重新解析 Kconfig，确保 SUSFS 子选项也被关闭
+# 重新解析配置
 make $MAKE_ARGS olddefconfig
 
 # 检查最终配置
@@ -201,13 +201,13 @@ if [ "$KSU_ENABLE" -eq 1 ]; then
         exit 1
     }
 
-    grep -q '^CONFIG_KPM=y$' out/.config || {
-        echo "[ERROR] CONFIG_KPM is not enabled"
+    grep -q '^# CONFIG_KPM is not set$' out/.config || {
+        echo "[ERROR] KPM is still enabled"
         exit 1
     }
 
     grep -q '^# CONFIG_KSU_SUSFS is not set$' out/.config || {
-        echo "[ERROR] SUSFS is still enabled!"
+        echo "[ERROR] SUSFS is still enabled"
         exit 1
     }
 
@@ -223,7 +223,6 @@ if [ "$KSU_ENABLE" -eq 1 ]; then
 
     echo "[SukiSU] Configuration verified successfully"
 fi
-
 # ============= 开始编译 =============
 make $MAKE_ARGS -j$(nproc)
 
@@ -242,16 +241,6 @@ rm -rf anykernel/kernels/
 
 mkdir -p anykernel/kernels/
 
-# Patch for SukiSU KPM support. 
-if [ $KSU_ENABLE -eq 1 ]; then
-    cd out/arch/arm64/boot/
-    wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.0/patch_linux
-    chmod +x patch_linux
-    ./patch_linux
-    rm Image
-    mv oImage Image
-    cd -
-fi
 
 cp out/arch/arm64/boot/Image anykernel/kernels/
 cp out/arch/arm64/boot/dtb anykernel/kernels/
@@ -341,14 +330,14 @@ sed -i 's/\/\/39 01 00 00 11 00 03 51 03 FF/39 01 00 00 11 00 03 51 03 FF/g' ${d
 
 make $MAKE_ARGS ${TARGET_DEVICE}_defconfig
 
-# ============= SukiSU + KPM 配置 =============
+# ============= SukiSU 配置 =============
 if [ "$KSU_ENABLE" -eq 1 ]; then
-    echo "[SukiSU] Enabling KernelSU + KPM"
-    echo "[SukiSU] Disabling SUSFS"
+    echo "[SukiSU] Enabling SukiSU"
+    echo "[SukiSU] Disabling KPM and SUSFS"
 
     scripts/config --file out/.config \
         -e KSU \
-        -e KPM \
+        -d KPM \
         -d KSU_SUSFS
 else
     scripts/config --file out/.config \
@@ -391,14 +380,15 @@ scripts/config --file out/.config \
 make $MAKE_ARGS olddefconfig
 
 # 验证 SukiSU 配置
+# 验证 SukiSU 配置
 if [ "$KSU_ENABLE" -eq 1 ]; then
     grep -q '^CONFIG_KSU=y$' out/.config || exit 1
-    grep -q '^CONFIG_KPM=y$' out/.config || exit 1
+    grep -q '^# CONFIG_KPM is not set$' out/.config || exit 1
     grep -q '^# CONFIG_KSU_SUSFS is not set$' out/.config || exit 1
     grep -q '^CONFIG_KALLSYMS=y$' out/.config || exit 1
     grep -q '^CONFIG_KALLSYMS_ALL=y$' out/.config || exit 1
 
-    echo "[SukiSU] KSU + KPM configuration verified"
+    echo "[SukiSU] Configuration verified"
 fi
 
 make $MAKE_ARGS -j$(nproc)
@@ -421,17 +411,6 @@ mv .dts.bak ${dts_source}
 
 rm -rf anykernel/kernels/
 mkdir -p anykernel/kernels/
-
-# Patch for SukiSU KPM support. 
-if [ $KSU_ENABLE -eq 1 ]; then
-    cd out/arch/arm64/boot/
-    wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.0/patch_linux
-    chmod +x patch_linux
-    ./patch_linux
-    rm Image
-    mv oImage Image
-    cd -
-fi
 
 cp out/arch/arm64/boot/Image anykernel/kernels/
 cp out/arch/arm64/boot/dtb anykernel/kernels/
